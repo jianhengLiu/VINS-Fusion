@@ -35,7 +35,7 @@
 #define SKIP_FIRST_CNT 10
 using namespace std;
 
-queue<sensor_msgs::ImageConstPtr> image_buf;
+queue<sensor_msgs::CompressedImageConstPtr> image_buf;
 queue<sensor_msgs::PointCloudConstPtr> point_buf;
 queue<nav_msgs::Odometry::ConstPtr> pose_buf;
 queue<Eigen::Vector3d> odometry_buf;
@@ -97,7 +97,7 @@ void new_sequence()
     m_buf.unlock();
 }
 
-void image_callback(const sensor_msgs::ImageConstPtr &image_msg)
+void image_callback(const sensor_msgs::CompressedImageConstPtr &image_msg)
 {
     //ROS_INFO("image_callback!");
     m_buf.lock();
@@ -246,7 +246,7 @@ void process()
 {
     while (true)
     {
-        sensor_msgs::ImageConstPtr image_msg = NULL;
+        sensor_msgs::CompressedImageConstPtr image_msg = NULL;
         sensor_msgs::PointCloudConstPtr point_msg = NULL;
         nav_msgs::Odometry::ConstPtr pose_msg = NULL;
 
@@ -307,19 +307,19 @@ void process()
             }
 
             cv_bridge::CvImageConstPtr ptr;
-            if (image_msg->encoding == "8UC1")
-            {
-                sensor_msgs::Image img;
-                img.header = image_msg->header;
-                img.height = image_msg->height;
-                img.width = image_msg->width;
-                img.is_bigendian = image_msg->is_bigendian;
-                img.step = image_msg->step;
-                img.data = image_msg->data;
-                img.encoding = "mono8";
-                ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::MONO8);
-            }
-            else
+//            if (image_msg->encoding == "8UC1")
+//            {
+//                sensor_msgs::Image img;
+//                img.header = image_msg->header;
+//                img.height = image_msg->height;
+//                img.width = image_msg->width;
+//                img.is_bigendian = image_msg->is_bigendian;
+//                img.step = image_msg->step;
+//                img.data = image_msg->data;
+//                img.encoding = "mono8";
+//                ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::MONO8);
+//            }
+//            else
                 ptr = cv_bridge::toCvCopy(image_msg, sensor_msgs::image_encodings::MONO8);
             
             cv::Mat image = ptr->image;
