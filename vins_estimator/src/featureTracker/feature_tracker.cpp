@@ -13,6 +13,7 @@
 
 bool FeatureTracker::inBorder(const cv::Point2f &pt)
 {
+    //  边界阈值
     const int BORDER_SIZE = 1;
     int img_x = cvRound(pt.x);
     int img_y = cvRound(pt.y);
@@ -57,22 +58,30 @@ void FeatureTracker::setMask()
     mask = cv::Mat(row, col, CV_8UC1, cv::Scalar(255));
 
     // prefer to keep features that are tracked for long time
+    //  对应     cnt_         pts_      id
     vector<pair<int, pair<cv::Point2f, int>>> cnt_pts_id;
 
     for (unsigned int i = 0; i < cur_pts.size(); i++)
         cnt_pts_id.push_back(make_pair(track_cnt[i], make_pair(cur_pts[i], ids[i])));
 
+    // 排序:https://blog.csdn.net/xs18952904/article/details/81463822
     sort(cnt_pts_id.begin(), cnt_pts_id.end(), [](const pair<int, pair<cv::Point2f, int>> &a, const pair<int, pair<cv::Point2f, int>> &b)
          {
+            //  降序
             return a.first > b.first;
          });
 
+    //  重新排序了,位置不对应,清空重新塞入
     cur_pts.clear();
     ids.clear();
     track_cnt.clear();
 
     for (auto &it : cnt_pts_id)
     {
+        /**
+         *  Q:这个判断条件是否与trackImage里的inBoard重复了?
+         *  A:
+         */
         if (mask.at<uchar>(it.second.first) == 255)
         {
             cur_pts.push_back(it.second.first);
@@ -91,6 +100,13 @@ double FeatureTracker::distance(cv::Point2f &pt1, cv::Point2f &pt2)
     return sqrt(dx * dx + dy * dy);
 }
 
+/**
+ *
+ * @param _cur_time 图片的时间戳
+ * @param _img  左眼
+ * @param _img1 右眼
+ * @return
+ */
 map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackImage(double _cur_time, const cv::Mat &_img, const cv::Mat &_img1)
 {
     TicToc t_r;
@@ -109,6 +125,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
     */
     cur_pts.clear();
 
+    //  查询是否有历史特诊点,有则使用LK光流法进行追踪
     if (prev_pts.size() > 0)
     {
         TicToc t_o;
@@ -132,6 +149,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
         else
             cv::calcOpticalFlowPyrLK(prev_img, cur_img, prev_pts, cur_pts, status, err, cv::Size(21, 21), 3);
         // reverse check
+        //  进行反向LK追踪,剔除误跟踪特征点
         if(FLOW_BACK)
         {
             vector<uchar> reverse_status;
@@ -149,7 +167,8 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
                     status[i] = 0;
             }
         }
-        
+
+        //  提取离群点
         for (int i = 0; i < int(cur_pts.size()); i++)
             if (status[i] && !inBorder(cur_pts[i]))
                 status[i] = 0;
@@ -161,6 +180,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
         //printf("track cnt %d\n", (int)ids.size());
     }
 
+    //  把对应跟踪上的特征点的被跟踪次数+1
     for (auto &n : track_cnt)
         n++;
 
