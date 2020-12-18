@@ -62,9 +62,9 @@ class FeaturePerId
 {
   public:
     const int feature_id;
-    int start_frame;
+    int start_frame;//  第一次被观察到的滑动窗口中的关键帧id
     vector<FeaturePerFrame> feature_per_frame;
-    int used_num;
+    int used_num;   //  该特征点被used_num帧观察到
     double estimated_depth;
     int solve_flag; // 0 haven't solve yet; 1 solve succ; 2 solve fail;
 

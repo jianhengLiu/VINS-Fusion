@@ -39,7 +39,9 @@ int FeatureManager::getFeatureCount()
     int cnt = 0;
     for (auto &it : feature)
     {
+        //  该特征点被used_num帧观察到
         it.used_num = it.feature_per_frame.size();
+        //  同时被四帧观察到时，才认为是可靠的特征点
         if (it.used_num >= 4)
         {
             cnt++;
@@ -48,12 +50,18 @@ int FeatureManager::getFeatureCount()
     return cnt;
 }
 
-
+/**
+ *  添加特征点同时判断该帧是否为关键帧
+ * @param frame_count 最新滑动窗口的ID
+ * @param image                                                     特征点ID      cameraId               xyz_uv_velocity
+ * @param td
+ * @return  true：该帧为关键帧
+ */
 bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, double td)
 {
     ROS_DEBUG("input feature: %d", (int)image.size());
     ROS_DEBUG("num of feature: %d", getFeatureCount());
-    double parallax_sum = 0;
+    double parallax_sum = 0;//  总视差
     int parallax_num = 0;
     last_track_num = 0;
     last_average_parallax = 0;
@@ -62,34 +70,41 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
     for (auto &id_pts : image)
     {
         FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
+        //  确保与对应相机对应上
         assert(id_pts.second[0].first == 0);
+        //  若是双目相机
         if(id_pts.second.size() == 2)
         {
             f_per_fra.rightObservation(id_pts.second[1].second);
             assert(id_pts.second[1].first == 1);
         }
 
+        //  遍历新的特征点是否有被收录进feature里
         int feature_id = id_pts.first;
         auto it = find_if(feature.begin(), feature.end(), [feature_id](const FeaturePerId &it)
                           {
             return it.feature_id == feature_id;
                           });
-
+        //  若没被收录则新添一个
         if (it == feature.end())
         {
             feature.push_back(FeaturePerId(feature_id, frame_count));
             feature.back().feature_per_frame.push_back(f_per_fra);
             new_feature_num++;
         }
+        //  若找到则将新的帧构造FeaturePerFrame加入到对应特征点的类FeaturePerId
         else if (it->feature_id == feature_id)
         {
+            //  这里的feature_per_frame是个vector
             it->feature_per_frame.push_back(f_per_fra);
             last_track_num++;
+            //  该特征点被四帧观察到，认为是稳定（长期）跟踪点
             if( it-> feature_per_frame.size() >= 4)
                 long_track_num++;
         }
     }
 
+    //  缺各种特征，表明该帧应当作为关键帧加入
     //if (frame_count < 2 || last_track_num < 20)
     //if (frame_count < 2 || last_track_num < 20 || new_feature_num > 0.5 * last_track_num)
     if (frame_count < 2 || last_track_num < 20 || long_track_num < 40 || new_feature_num > 0.5 * last_track_num)
@@ -97,14 +112,17 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
 
     for (auto &it_per_id : feature)
     {
+        //  判断该特征点是否被前前关键帧之前和就近两次关键帧观察到
         if (it_per_id.start_frame <= frame_count - 2 &&
             it_per_id.start_frame + int(it_per_id.feature_per_frame.size()) - 1 >= frame_count - 1)
         {
+            //  若是则计算该点的视差
             parallax_sum += compensatedParallax2(it_per_id, frame_count);
             parallax_num++;
         }
     }
 
+    //  表明该帧可能是一个全新的视角（没有长期特征点）
     if (parallax_num == 0)
     {
         return true;
@@ -114,10 +132,17 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
         ROS_DEBUG("parallax_sum: %lf, parallax_num: %d", parallax_sum, parallax_num);
         ROS_DEBUG("current parallax: %lf", parallax_sum / parallax_num * FOCAL_LENGTH);
         last_average_parallax = parallax_sum / parallax_num * FOCAL_LENGTH;
+        //  视差足够大认定为关键帧
         return parallax_sum / parallax_num >= MIN_PARALLAX;
     }
 }
 
+/**
+ * 获取前后关键帧对应特征点容器（vector）
+ * @param frame_count_l 前一关键帧id
+ * @param frame_count_r 当前关键帧id
+ * @return
+ */
 vector<pair<Vector3d, Vector3d>> FeatureManager::getCorresponding(int frame_count_l, int frame_count_r)
 {
     vector<pair<Vector3d, Vector3d>> corres;
@@ -527,6 +552,7 @@ void FeatureManager::removeFront(int frame_count)
     }
 }
 
+//  2：欧式距离平方视差
 double FeatureManager::compensatedParallax2(const FeaturePerId &it_per_id, int frame_count)
 {
     //check the second last frame is keyframe or not

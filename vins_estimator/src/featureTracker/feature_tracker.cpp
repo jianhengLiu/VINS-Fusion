@@ -172,6 +172,8 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
         for (int i = 0; i < int(cur_pts.size()); i++)
             if (status[i] && !inBorder(cur_pts[i]))
                 status[i] = 0;
+
+        //  根据特征点是否异常重新整理变量使其排列对应上
         reduceVector(prev_pts, status);
         reduceVector(cur_pts, status);
         reduceVector(ids, status);
@@ -201,6 +203,8 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
                 cout << "mask is empty " << endl;
             if (mask.type() != CV_8UC1)
                 cout << "mask type wrong " << endl;
+            //  进行角点检测，增加特征点数量
+            //  https://blog.csdn.net/guduruyu/article/details/69537083
             cv::goodFeaturesToTrack(cur_img, n_pts, MAX_CNT - cur_pts.size(), 0.01, MIN_DIST, mask);
         }
         else
@@ -210,15 +214,22 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
         for (auto &p : n_pts)
         {
             cur_pts.push_back(p);
+            /**
+             * Q:为什么是n_id++?
+             * A:记录所有有效特征点的全局id
+             */
             ids.push_back(n_id++);
             track_cnt.push_back(1);
         }
         //printf("feature cnt after add %d\n", (int)ids.size());
     }
 
+    //  特征点去畸变同时装换为归一化平面点
     cur_un_pts = undistortedPts(cur_pts, m_camera[0]);
+    //  计算特征点在归一化平面上的速度
     pts_velocity = ptsVelocity(ids, cur_un_pts, cur_un_pts_map, prev_un_pts_map);
 
+    //  双目的右视图片处理
     if(!_img1.empty() && stereo_cam)
     {
         ids_right.clear();
@@ -277,6 +288,7 @@ map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> FeatureTracker::trackIm
     for(size_t i = 0; i < cur_pts.size(); i++)
         prevLeftPtsMap[ids[i]] = cur_pts[i];
 
+    //  feature_id,      camera_id,        xyz_uv_velocity
     map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> featureFrame;
     for (size_t i = 0; i < ids.size(); i++)
     {
@@ -428,6 +440,7 @@ vector<cv::Point2f> FeatureTracker::ptsVelocity(vector<int> &ids, vector<cv::Poi
     cur_id_pts.clear();
     for (unsigned int i = 0; i < ids.size(); i++)
     {
+        //  主要用于保存构造prev_id_pts
         cur_id_pts.insert(make_pair(ids[i], pts[i]));
     }
 
@@ -440,6 +453,7 @@ vector<cv::Point2f> FeatureTracker::ptsVelocity(vector<int> &ids, vector<cv::Poi
         {
             std::map<int, cv::Point2f>::iterator it;
             it = prev_id_pts.find(ids[i]);
+            //  判断是否有找到对应的点
             if (it != prev_id_pts.end())
             {
                 double v_x = (pts[i].x - it->second.x) / dt;
